@@ -82,7 +82,7 @@ pub fn getHost(get: std.mem.Allocator) ![]u8 {
     return hostname_cleaned;
 }
 
-// gasqu 0.2.0, create a output with CPU
+// gasqu 0.1.1, create a output with CPU
 pub fn utgc(gut: std.mem.Allocator) ![]u8
 {
 var buffer: [16384]u8 = undefined;
@@ -99,6 +99,99 @@ if (std.mem.indexOf(u8, readbuf, "model name")) |index|
     }
 
     return try gut.dupe(u8, "Unknown CPU");
+}
+//gasqu 0.1.3, final the first component. output with GPU
+pub fn getGpuModelName(allocator: std.mem.Allocator) ![]u8 {
+    var dir = try std.fs.openDirAbsolute("/sys/class/drm", .{ .iterate = true });
+    defer dir.close();
+
+    var iterator = dir.iterate();
+    var found_uevent: ?std.fs.File = null;
+    defer if (found_uevent) |f| f.close();
+
+    while (try iterator.next()) |entry| {
+        if (entry.kind == .directory and std.mem.startsWith(u8, entry.name, "card") and !std.mem.containsAtLeast(u8, entry.name, 1, "-")) {
+            var card_dir = try dir.openDir(entry.name, .{});
+            defer card_dir.close();
+
+            if (card_dir.openFile("device/uevent", .{})) |file| {
+                found_uevent = file;
+                break;
+            } else |_| continue;
+        }
+    }
+
+    const uevent_file = found_uevent or return error.GpuNotFound;
+
+    const max_bytes = 4096;
+    const content = try uevent_file.readToEndAlloc(allocator, max_bytes);
+    defer allocator.free(content);
+
+    var lines = std.mem.tokenizeSequence(u8, content, "\n");
+    var pci_id_buf: [32]u8 = undefined;
+    var pci_id: ?[]const u8 = null;
+
+    while (lines.next()) |line| {
+        if (std.mem.startsWith(u8, line, "PCI_ID=")) {
+            pci_id = line["PCI_ID=".len..];
+            break;
+        } else if (std.mem.startsWith(u8, line, "PRODUCT=")) {
+            const raw_prod = line["PRODUCT=".len..];
+            var parts = std.mem.tokenizeSequence(u8, raw_prod, "/");
+            const vendor = parts.next() orelse continue;
+            const device = parts.next() orelse continue;
+            pci_id = try std.fmt.bufPrint(&pci_id_buf, "{s}:{s}", .{ vendor, device });
+            break;
+        }
+    }
+
+    const id = pci_id or return error.GpuNotFound;
+
+    var pci_ids_file = std.fs.openFileAbsolute("/usr/share/hwdata/pci.ids", .{}) catch
+        std.fs.openFileAbsolute("/usr/share/misc/pci.ids", .{}) orelse
+        return try allocator.dupe(u8, id);
+    defer pci_ids_file.close();
+
+    const ids_content = try pci_ids_file.readToEndAlloc(allocator, 1024 * 1024 * 4);
+    defer allocator.free(ids_content);
+
+    var id_parts = std.mem.tokenizeSequence(u8, id, ":");
+    const vendor_target = id_parts.next() orelse return error.InvalidPciId;
+    const device_target = id_parts.next() orelse return error.InvalidPciId;
+
+    var ids_lines = std.mem.splitSequence(u8, ids_content, "\n");
+    var current_vendor: ?[]const u8 = null;
+    var vendor_name: ?[]const u8 = null;
+    var device_name: ?[]const u8 = null;
+
+    while (ids_lines.next()) |line| {
+        if (line.len == 0 or line[0] == '#') continue;
+
+        if (line[0] != '\t') {
+            var parts = std.mem.tokenizeSequence(u8, line, " ");
+            current_vendor = parts.next() orelse continue;
+            if (std.mem.eql(u8, current_vendor.?, vendor_target)) {
+                vendor_name = std.mem.trim(u8, line[current_vendor.?.len..], " ");
+            } else {
+                vendor_name = null;
+            }
+        } else if (vendor_name != null and line[0] == '\t' and line[1] != '\t') {
+            var parts = std.mem.tokenizeSequence(u8, line[1..], " ");
+            const current_device = parts.next() orelse continue;
+            if (std.mem.eql(u8, current_device, device_target)) {
+                device_name = std.mem.trim(u8, line[1 + current_device.len..], " ");
+                break;
+            }
+        }
+    }
+
+    if (vendor_name) |v| {
+        if (device_name) |d| {
+            return try std.fmt.allocPrint(allocator, "{s} {s}", .{ v, d });
+        }
+    }
+
+    return try allocator.dupe(u8, id);
 }
 
 pub fn main() !void {
@@ -119,10 +212,17 @@ pub fn main() !void {
     const namecpu_info = try utgc(gut);
     defer gut.free(namecpu_info);
 
+    const gpu_name = getGpuModelName(allocator) catch |err| {
+        std.debug.print("Failed to fetch GPU model name: {}\n", .{err});
+        return;
+    };
+    defer allocator.free(gpu_name);
+
     std.debug.print("Hostname:\t{s}\n", .{host_info});
     std.debug.print("System info:\t{s}\n", .{system_info});
+    std.debug.print("GPU: {s}\n", .{gpu_name});
     std.debug.print("CPU: {s}\n", .{namecpu_info});
-    std.debug.print("Cores quantum:\t{}\n", .{highway_cores});
+    std.debug.print("CPU's cores quantum:\t{}\n", .{highway_cores});
     std.debug.print("RAM Total:\t{} GB\n", .{ram.total});
     std.debug.print("RAM Available:\t{} GB\n", .{ram.avail});
     std.debug.print("RAM Used:\t{} GB\n", .{ram.used});
