@@ -1,9 +1,13 @@
 # gasqu
 
 ## about project in all
-gasqu is my first, Linux-only and fully-funcltional tool, that maked on Zig programm language
 
-## versions and what can gasqu do
+### what is gasqu?
+gasqu is Linux-only and component-based tool, that maked on Zig programm language
+by the term "component-based" I mean, 
+### what it can do?
+I will write this later
+## versions
 
 ### v0.1.0
 this is a very first version of gasqu, raw and low-functional
@@ -12,13 +16,20 @@ its only can show you some information about your computer and system, like:
 2. Core's quantum of your CPU
 3. RAM, total, available and used
 4. Hostname
-### v0.2.0
+### v0.1.1
 1. now gasqu can show your CPU's model name
 2. added gitignore
 3. Changed output order
-### v0.2.1 
+### v0.1.2 
 1. Deleted some trash files
 2. Changed readme
+### v0.1.3 
+final version of first component
+1. now gasqu can show your GPU
+2. Making a new readme 
+3. just a bit changing output
+for example:
+Cores quantum --> CPU's cores quantum 
 
 ## what will be in the future?
 
