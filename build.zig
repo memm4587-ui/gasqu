@@ -4,10 +4,10 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Настраиваем исполняемый файл
+    
     const exe = b.addExecutable(.{
-        .name = "gasq",
-        // Указываем компилятору, что НАСТОЯЩИЙ код программы нужно искать в src/main.zig
+        .name = "gasqu",
+        
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,

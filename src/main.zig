@@ -121,7 +121,7 @@ pub fn getGpuModelName(allocator: std.mem.Allocator) ![]u8 {
         }
     }
 
-    const uevent_file = found_uevent or return error.GpuNotFound;
+    const uevent_file = found_uevent orelse return error.GpuNotFound;
 
     const max_bytes = 4096;
     const content = try uevent_file.readToEndAlloc(allocator, max_bytes);
@@ -145,11 +145,19 @@ pub fn getGpuModelName(allocator: std.mem.Allocator) ![]u8 {
         }
     }
 
-    const id = pci_id or return error.GpuNotFound;
+    const id = pci_id orelse return error.GpuNotFound;
+          var pci_ids_file: std.fs.File = undefined;
+    if (std.fs.openFileAbsolute("/usr/share/hwdata/pci.ids", .{})) |file| {
+        pci_ids_file = file;
+    } else |_| {
+        if (std.fs.openFileAbsolute("/usr/share/misc/pci.ids", .{})) |file| {
+            pci_ids_file = file;
+        } else |_| {
+            return try allocator.dupe(u8, id);
+        }
+    }
 
-    var pci_ids_file = std.fs.openFileAbsolute("/usr/share/hwdata/pci.ids", .{}) catch
-        std.fs.openFileAbsolute("/usr/share/misc/pci.ids", .{}) orelse
-        return try allocator.dupe(u8, id);
+
     defer pci_ids_file.close();
 
     const ids_content = try pci_ids_file.readToEndAlloc(allocator, 1024 * 1024 * 4);
